@@ -1,0 +1,181 @@
+﻿if ( !window.USC ) { window.USC = {}; }
+( function () {
+	/**
+	 * Modified encodeURIComponent that replaces quotes and paratheneses.
+	 * 
+	 * @param {string} data
+	 * @returns {string}
+	 */
+	function encode( data ) {
+		if ( !data ) {
+			return "";
+		}
+		return encodeURIComponent( String( data ) )
+			.replace(
+				/['"\(\)]/g,
+				function ( m ) {
+					switch ( m ) {
+						case "'":
+							return '%27';
+						case '"':
+							return '%22';
+						case '(':
+							return '%28';
+						case ')':
+							return '%29';
+						default:
+							return m;
+					}
+				}
+			);
+	}
+
+	/**
+	 * Modified decodeURIComponent that turns + symbols into spaces.
+	 * 
+	 * @param {string} data
+	 * @returns {string}
+	 */
+	function decode( data ) {
+		if ( !data ) {
+			return "";
+		} else {
+			return decodeURIComponent( String( data ).replace( /\+/g, '%20' ) );
+		}
+	}
+
+	// Parse the cookies out of the document.cookie object.
+	var _cookies = {};
+	var array = document.cookie ? document.cookie.split( '; ' ) : [];
+	for ( var i = 0; i < array.length; i++ ) {
+		var item = array[i];
+		var parts = item.split( '=' );
+		var name = decode( parts.shift() ).toLowerCase();
+		var value = parts.join( '=' );
+		switch ( value[0] ) {
+			case '#':
+				_cookies[name] = +value.substring( 1 );
+				break;
+			case ':':
+				_cookies[name] = new Date( +value.substring( 1 ) );
+				break;
+			case '!':
+				_cookies[name] = value === '!!';
+				break;
+			case "'":
+				_cookies[name] = decode( value.substring( 1 ) );
+				break;
+			default:
+				_cookies[name] = decode( value );
+				break;
+		}
+	}
+
+	// The domain to use for cookie scope.
+	var _domain = null;
+	if ( window.location.host && window.location.host.indexOf( 'www.' ) === 0 ) {
+		_domain = window.location.host.substr( 3 );
+	}
+
+	USC.cookies = {
+		/**
+		 * Return the value of a cookie.
+		 *
+		 * @param {string} key
+		 * @returns {any}
+		 */
+		get: function ( key ) {
+			return _cookies[String( key ).toLowerCase()];
+		},
+
+		/**
+		 * Get or Set a cookie value.
+		 *
+		 * @param {string} key
+		 * @param {any} value
+		 * @param {boolean | number | Date} persist
+		 */
+		set: function ( key, value, persist ) {
+			if ( value === null || typeof value === 'undefined' ) {
+				// A null value means delete the cookie.
+				USC.cookies.delete( key );
+				return;
+			}
+
+			// Encode the cookie value.
+			var encoded;
+			if ( typeof value === 'number' ) {
+				encoded = '#' + value;
+			} else if ( typeof value === 'boolean' ) {
+				encoded = value ? '!!' : '!';
+			} else if ( !value ) {
+				encoded = "";
+			} else if ( value.constructor === Date ) {
+				encoded = ":" + value.getTime();
+			} else if ( Array.isArray( value ) ) {
+				if ( !value.length ) {
+					encoded = "[]";
+				} else if ( typeof value[0] === 'number' ) {
+					var array = new Array( value.length );
+					for ( var i = 0; i < value.length; i++ ) {
+						array[i] = parseFloat( value[i] );
+						if ( isNaN( array[i] ) ) {
+							array = null;
+							break;
+						}
+					}
+					encoded = array ? JSON.stringify( array ) : encode( String( value ) );
+				} else {
+					encoded = encode( String( value ) );
+				}
+			} else if ( typeof value === 'string' ) {
+				encoded = encode( value );
+			} else if ( typeof value === 'object' ) {
+				encoded = JSON.stringify( value );
+			} else {
+				encoded = String( value );
+			}
+
+			// Get any optional expiration.
+			var date;
+			if ( !persist ) {
+				date = null;
+			} else if ( persist.constructor === Date ) {
+				// Already a date.
+			} else {
+				date = new Date();
+				if ( typeof persist === 'number' ) {
+					date.setDate( date.getDate() + persist );
+				} else {
+					date.setDate( date.getDate() + 30 );
+				}
+			}
+			var expires = ( date ? '; expires = ' + date.toUTCString() : '' );
+
+			// Get any domain scope.
+			var domain = ( _domain ? '; domain=' + _domain : '' );
+
+			// Set the value in the dictionary.
+			_cookies[key] = value;
+
+			// Set the cookie in the document.
+			document.cookie = key + "=" + encoded + "; path=/" + expires + domain;
+		},
+
+		/**
+		 * Delete a cookie by name.
+		 *
+		 * @param {string} key
+		 */
+		delete: function ( key ) {
+			// Clear the cookie.
+			var expires = new Date( 0 ).toUTCString();
+			document.cookie = key + "=; path=/; expires=" + expires;
+			delete _cookies[key];
+		}
+	};
+
+	if ( window.register ) {
+		window.register( 'usc/p/cookies' );
+	}
+} )();
